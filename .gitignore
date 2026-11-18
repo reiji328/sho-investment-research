@@ -1,0 +1,9 @@
+# Public source repository: do not version YouTube API data, secrets or local outputs.
+output/
+.env
+.env.*
+*.pem
+*.key
+__pycache__/
+.pytest_cache/
+.DS_Store
