@@ -25,9 +25,9 @@ YouTube Data API v3 で **一般に閲覧可能な動画のメタデータ** を
 
 1. **完了:** PUBLIC リポジトリ `reiji328/sho-investment-research` の作成。既存の `My-Knowledge` は非公開のままです。
 2. **完了:** このプロジェクトのプログラム・テスト・ワークフローを配置。
-3. **未設定:** [Google Cloud Console](https://console.cloud.google.com/) でプロジェクトを作成し、**YouTube Data API v3** を有効にしてAPIキーを発行する。キーは可能なら **YouTube Data API v3 にAPI制限**を設定する。GitHub-hosted runnerの接続元IPは固定ではないため、IP制限はそのままでは使えません。請求・使用量の制限も確認してください。
-4. **未設定:** GitHubのリポジトリ → Settings → Secrets and variables → Actions → New repository secret。名前を **`YOUTUBE_API_KEY`**、値を発行したAPIキーにする。APIキーをREADME、ログ、Issues、チャット、Git履歴に絶対に貼り付けない。
-5. **未実行:** Actions → `Collect Sho YouTube video catalog` → `Run workflow` を1回実行。テスト成功とメタデータ取得成功、Artifactsに3ファイルがあることを確認する。
+3. **初回設定済み:** [Google Cloud Console](https://console.cloud.google.com/) でプロジェクトを作成し、**YouTube Data API v3** を有効にしてAPIキーを発行する。キーは可能なら **YouTube Data API v3 にAPI制限**を設定する。GitHub-hosted runnerの接続元IPは固定ではないため、IP制限はそのままでは使えません。請求・使用量の制限も確認してください。
+4. **初回設定済み:** GitHubのリポジトリ → Settings → Secrets and variables → Actions → New repository secret。名前を **`YOUTUBE_API_KEY`**、値を発行したAPIキーにする。APIキーをREADME、ログ、Issues、チャット、Git履歴に絶対に貼り付けない。
+5. **初回実行成功（2026-11-18）:** Actions → `Collect Sho YouTube video catalog` → `Run workflow` を1回実行。テスト成功とメタデータ取得成功、Artifactsに3ファイルがあることを確認する。
 6. 取得後は `manifest.json` を見て、実取得件数・見えない動画数・取得日時を確認する。
 
 ### ローカルテスト
@@ -49,3 +49,14 @@ YOUTUBE_API_KEY='YOUR_PRIVATE_KEY' python scripts/collect.py
 - YouTubeの内容についてこのリポジトリは**推薦・予測・売買指示を提供しません**。将来の独自研究では発言・仮説・検証結果を区別します。
 
 参照: [YouTube Data API v3](https://developers.google.com/youtube/v3) · [YouTube API Developer Policies](https://developers.google.com/youtube/terms/developer-policies) · [GitHub Actions billing](https://docs.github.com/en/actions/concepts/billing-and-usage)
+
+## タイトルに基づく仮分類（2026-11-19追加）
+
+- `scripts/classify.py` は最新の `output/videos.json` から動画ID・タイトル・公開日・長さだけを読み、**内容を視聴したと誤認させない**タイトルベースの仮分類を実施します。
+- 生成するファイル：`classified_videos.csv`（全件のジャンル・複数テーマタグ・重複グループ）、`priority_research_queue.csv`（優先研究候補・同一タイトルを1件にまとめた一覧）、`classification_manifest.json`（件数・分類規則版・限界）。
+- 優先度A=明示的な「日本株爆益戦略」シリーズ、テクニカル指標の基礎説明、売買・執行方法の解説候補。B=その他の手法説明候補。C=タイトル上、独立した手法の説明と判断できない動画。**Cは不要・視聴済み・質が低いという意味ではありません。**
+- **2026-11-18の初回データ（3,439件）を2026-11-19にローカル処理した参考結果**：A20、B41、C3,378件、異なるタイトル3,131、同一タイトルが2本以上存在するグループ305。A/Bを同一タイトル単位で重複整理した研究候補は58タイトル。
+- この分類処理をGitHub Actionsの取得後ステップに追加済み。**分類追加後のGitHub Actions実行成功はまだ未確認**。次回以降のArtifactに出力する予定です。
+- 220件の差分は研究の判断により「非公開扱い・調査対象外」とするが、実際の非公開設定は確認していない。プログラムは根拠のない220件のレコードを作成しません。
+- **重要**：全動画のURL、タイトル、テーマから推測した「研究候補」であり、動画内の発言、指標の計算条件、売買エントリー・損切り、期待値や再現性の根拠を確認したものではありません。今後の研究には動画本編からの証拠確認が必要です。
+- 生成した分類CSV/JSONは従来の元APIデータと同じく**21日保持のArtifactsのみ**へ出力し、Git履歴へコミットしません。第三者APIメタデータの更新・削除要件に従ってください。
