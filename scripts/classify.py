@@ -12,7 +12,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = "sho-title-index-v0.1"
+SCHEMA_VERSION = "sho-title-index-v0.2"
 
 TAG_RULES = {
     "日本株・TOPIX": r"日本株|TOPIX|マザーズ|グロース株|バリュー株|日本の株|高配当",
@@ -53,7 +53,8 @@ OTHER_METHOD = re.compile(
 )
 INDEX_HEADERS = [
     "video_id", "url", "title", "published_at_jst", "duration_seconds",
-    "category", "priority", "topic_tags", "series_number", "same_title_count",
+    "category", "priority", "video_format", "format_evidence", "research_order_group",
+    "topic_tags", "series_number", "same_title_count",
     "title_group_hash", "classification_reason", "content_review_status",
 ]
 
@@ -76,6 +77,31 @@ def classify_title(title: str) -> tuple[str, str, str, str]:
         return "企業決算の事例", "C", "", "特定企業の決算検討を示す語"
     return "市況・個別相場の分析候補", "C", "", "タイトルから独立手法の解説と判別できない"
 
+
+def detect_video_format(video: dict) -> tuple[str, str]:
+    """Identify broadcast videos using YouTube API metadata, never title keywords."""
+    state = video.get("live_broadcast_content")
+    details = video.get("has_live_streaming_details")
+    if state == "upcoming":
+        return "配信予定", "API: liveBroadcastContent=upcoming"
+    if state == "live":
+        return "ライブ配信中", "API: liveBroadcastContent=live"
+    if details is True:
+        return "ライブアーカイブ", "API: liveStreamingDetailsが存在"
+    if details is False and state == "none":
+        return "通常動画", "API: ライブ配信メタデータなし"
+    return "判定保留", "API: 必要な配信種別のフィールドが不足/不整合"
+
+
+def research_order_group(priority: str, video_format: str) -> int:
+    """Normal A/B first, live A/B later; C videos remain available for later."""
+    if video_format == "通常動画":
+        return {"A": 1, "B": 2, "C": 7}[priority]
+    if video_format == "判定保留":
+        return {"A": 5, "B": 6, "C": 9}[priority]
+    return {"A": 3, "B": 4, "C": 8}[priority]
+
+
 def classify_records(videos: list[dict]) -> tuple[list[dict], dict]:
     ids = [x.get("video_id", "") for x in videos]
     if not ids or any(not x for x in ids) or len(ids) != len(set(ids)):
@@ -85,6 +111,7 @@ def classify_records(videos: list[dict]) -> tuple[list[dict], dict]:
     for video in videos:
         title = video.get("title", "")
         category, priority, series, reason = classify_title(title)
+        video_format, format_evidence = detect_video_format(video)
         title_hash = hashlib.sha256(canonical_title(title).encode("utf-8")).hexdigest()[:16]
         matched = [name for name, regex in TAG_REGEX.items() if regex.search(title)]
         rows.append({
@@ -92,6 +119,8 @@ def classify_records(videos: list[dict]) -> tuple[list[dict], dict]:
             "title": title, "published_at_jst": video.get("published_at_jst", ""),
             "duration_seconds": video.get("duration_seconds", ""),
             "category": category, "priority": priority,
+            "video_format": video_format, "format_evidence": format_evidence,
+            "research_order_group": research_order_group(priority, video_format),
             "topic_tags": "; ".join(matched) if matched else "その他・未分類",
             "series_number": series, "same_title_count": counts[canonical_title(title)],
             "title_group_hash": title_hash, "classification_reason": reason,
@@ -108,6 +137,8 @@ def classify_records(videos: list[dict]) -> tuple[list[dict], dict]:
         "videos_in_repeated_title_groups": sum(n for n in counts.values() if n > 1),
         "category_counts": dict(Counter(x["category"] for x in rows)),
         "priority_counts": dict(Counter(x["priority"] for x in rows)),
+        "video_format_counts": dict(Counter(x["video_format"] for x in rows)),
+        "research_order_group_counts": dict(Counter(str(x["research_order_group"]) for x in rows)),
         "topic_tag_counts": dict(Counter(tag.strip() for x in rows for tag in x["topic_tags"].split(";"))),
     }
     return rows, manifest
@@ -115,7 +146,8 @@ def classify_records(videos: list[dict]) -> tuple[list[dict], dict]:
 def make_queue(rows: list[dict], n: int = 80) -> list[dict]:
     seen_title_hashes = set()
     top = sorted(rows, key=lambda r: (
-        0 if r["series_number"] else 1 if r["priority"] == "A" else 2 if r["priority"] == "B" else 3,
+        r["research_order_group"],
+        0 if r["series_number"] else 1,
         int(r["series_number"]) if r["series_number"] else 0,
         r["published_at_jst"], r["video_id"],
     ))
