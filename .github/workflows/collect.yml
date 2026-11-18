@@ -1,0 +1,40 @@
+name: Collect Sho YouTube video catalog
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 05:23 JST daily (20:23 UTC previous day). GitHub scheduled times may be delayed.
+    - cron: '23 20 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: youtube-catalog-collector
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test without external requests
+        run: python -m unittest discover -s tests -v
+      - name: Collect public video catalog
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: python scripts/collect.py
+      - name: Upload current catalog with limited retention
+        uses: actions/upload-artifact@v4
+        with:
+          name: sho-youtube-catalog-${{ github.run_id }}
+          path: output/
+          retention-days: 21
+          if-no-files-found: error
+          compression-level: 6
