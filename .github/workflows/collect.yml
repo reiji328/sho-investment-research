@@ -30,6 +30,8 @@ jobs:
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
         run: python scripts/collect.py
+      - name: Classify title metadata and build research queue
+        run: python scripts/classify.py output/videos.json output/
       - name: Upload current catalog with limited retention
         uses: actions/upload-artifact@v4
         with:
