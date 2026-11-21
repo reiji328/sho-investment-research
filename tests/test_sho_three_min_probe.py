@@ -21,6 +21,7 @@ class Tests(unittest.TestCase):
         self.assertEqual(data["contents"][0]["parts"][0]["videoMetadata"],
                          {"startOffset": "420s", "endOffset": "600s"})
         self.assertEqual(data["generationConfig"]["mediaResolution"], "MEDIA_RESOLUTION_LOW")
+        self.assertNotIn("responseMimeType", data["generationConfig"])
 
     def test_public_only_allowed_labels(self):
         result = s.sanitize(GOOD)
