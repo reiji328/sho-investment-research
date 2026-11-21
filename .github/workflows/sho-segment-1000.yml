@@ -1,0 +1,67 @@
+name: Sho 10 to 13 segment one-shot
+
+"on":
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/sho-segment-1000.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: sho-1000-1300-segment
+  cancel-in-progress: false
+
+jobs:
+  segment:
+    if: github.repository == 'reiji328/sho-investment-research' && github.event.before == '9991068ca45af3e08a8630bb164ff424f480e126' && github.run_attempt == '1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Test 3-minute protocol offline
+        run: python3 -m unittest discover -s tests -p 'test_sho_three_min_probe.py' -v
+      - name: Check API key before sending
+        env:
+          HAS_KEY: ${{ secrets.GEMINI_API_KEY != '' }}
+        run: |
+          if [[ "$HAS_KEY" != "true" ]]; then
+            echo 'Gemini key unavailable. No request sent.'
+            exit 1
+          fi
+      - name: Load latest successful catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          endpoint="repos/$GITHUB_REPOSITORY/actions/workflows/collect.yml/runs?branch=master&status=success&per_page=30"
+          run_id=$(gh api "$endpoint" | jq -er --arg repo "$GITHUB_REPOSITORY" '
+            first(.workflow_runs[] | select(
+              .head_repository.full_name == $repo and
+              .path == ".github/workflows/collect.yml" and
+              (.event == "schedule" or .event == "workflow_dispatch")
+            ) | .id)')
+          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" \
+            --name "sho-youtube-catalog-$run_id" --dir "$RUNNER_TEMP/catalog"
+          python3 -c 'import sys; from scripts.sho_three_min_probe import check_catalog; check_catalog(sys.argv[1]); print("Approved video confirmed.")' "$RUNNER_TEMP/catalog/videos.json"
+      - name: Send one 10 to 13-minute video request
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python3 scripts/sho_three_min_probe.py \
+            --catalog "$RUNNER_TEMP/catalog/videos.json" \
+            --start-seconds 600 \
+            --end-seconds 780 \
+            --output "$RUNNER_TEMP/three_min_topics_1000.json"
+      - name: Publish public-safe topic labels
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: sho-three-min-text-labels-1000
+          path: ${{ runner.temp }}/three_min_topics_1000.json
+          retention-days: 21
+          if-no-files-found: error

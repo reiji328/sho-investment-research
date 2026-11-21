@@ -23,6 +23,19 @@ class Tests(unittest.TestCase):
         self.assertEqual(data["generationConfig"]["mediaResolution"], "MEDIA_RESOLUTION_LOW")
         self.assertNotIn("responseMimeType", data["generationConfig"])
 
+    def test_next_segment_10_to_13_uses_same_validated_structure(self):
+        request = s.payload(600, 780)
+        self.assertEqual(
+            request["contents"][0]["parts"][0]["videoMetadata"],
+            {"startOffset": "600s", "endOffset": "780s"},
+        )
+        self.assertIn("10:00〜13:00", request["contents"][0]["parts"][1]["text"])
+        output = s.sanitize(GOOD, 600, 780)
+        self.assertEqual(
+            [segment["time"] for segment in output["segments"]],
+            ["10:00", "11:00", "12:00"],
+        )
+
     def test_public_only_allowed_labels(self):
         result = s.sanitize(GOOD)
         self.assertEqual([i["time"] for i in result["segments"]], ["07:00", "08:00", "09:00"])

@@ -42,21 +42,25 @@ def check_catalog(path):
         raise PilotError("Video metadata mismatch.")
 
 
-def payload():
+def clock(seconds):
+    return f"{seconds//60:02d}:{seconds%60:02d}"
+
+
+def payload(start=START, end=END):
     prompt = (
-        "この公開動画の07:00〜10:00のみを確認して、3つの1分区間"
-        "07:00〜07:59、08:00〜08:59、09:00〜09:59について、"
+        f"この公開動画の{clock(start)}〜{clock(end)}のみを確認して、3つの1分区間"
+        + "、".join(f"{clock(s)}〜{clock(s+59)}" for s in range(start, end, 60)) + "について、"
         "区間内の中心的な話題をそれぞれ一つ、指定された話題名から選んでください。"
         "候補: " + " / ".join(LABELS) + "。"
         "判別できない場合は「判別できない」を選んでください。"
         "字幕の引用・銘柄名・数値条件・自由記述は出力禁止。"
-        "返答は3つの話題名を07時台・08時台・09時台の順に縦棒|で区切った1行のみ。"
+        "返答は3つの話題名を上記の1分区間の順に縦棒|で区切った1行のみ。"
         "例: チャートの見方|信用取引|信用倍率。JSONや説明文は返さないこと。"
     )
     return {
         "contents": [{"role": "user", "parts": [
             {"fileData": {"fileUri": VIDEO_URL},
-             "videoMetadata": {"startOffset": f"{START}s", "endOffset": f"{END}s"}},
+             "videoMetadata": {"startOffset": f"{start}s", "endOffset": f"{end}s"}},
             {"text": prompt},
         ]}],
         "generationConfig": {
@@ -66,11 +70,11 @@ def payload():
     }
 
 
-def send_once(key):
+def send_once(key, start=START, end=END):
     conn = http.client.HTTPSConnection("generativelanguage.googleapis.com", timeout=220)
     try:
         conn.request("POST", f"/v1beta/models/{MODEL}:generateContent",
-                     json.dumps(payload(), ensure_ascii=False).encode("utf-8"),
+                     json.dumps(payload(start, end), ensure_ascii=False).encode("utf-8"),
                      {"Content-Type": "application/json", "x-goog-api-key": key})
         response = conn.getresponse()
         print(f"3-minute clip HTTP {response.status}", flush=True)
@@ -88,7 +92,7 @@ def send_once(key):
         conn.close()
 
 
-def sanitize(value):
+def sanitize(value, start=START, end=END):
     if not isinstance(value, dict):
         raise PilotError("Unexpected response.")
     usage = value.get("usageMetadata")
@@ -128,9 +132,9 @@ def sanitize(value):
     return {
         "url": VIDEO_URL,
         "segments": [
-            {"time": "07:00", "topic": labels[0]},
-            {"time": "08:00", "topic": labels[1]},
-            {"time": "09:00", "topic": labels[2]},
+            {"time": clock(start), "topic": labels[0]},
+            {"time": clock(start+60), "topic": labels[1]},
+            {"time": clock(start+120), "topic": labels[2]},
         ],
         "validation": "未照合・Geminiの話題候補",
         "reported_prompt_tokens": count,
@@ -141,15 +145,20 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--catalog", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--start-seconds", type=int, default=START)
+    parser.add_argument("--end-seconds", type=int, default=END)
     a = parser.parse_args()
     try:
+        if (a.start_seconds < 0 or a.start_seconds % 60 or
+                a.end_seconds - a.start_seconds != 180 or a.end_seconds > 1564):
+            raise PilotError("Expected one valid three-minute minute-aligned window.")
         check_catalog(a.catalog)
         if a.output.exists() or a.output.is_symlink() or not a.output.parent.is_dir():
             raise PilotError("Output must be a new file.")
         key = os.getenv("GEMINI_API_KEY", "").strip()
         if not key:
             raise PilotError("No API key; no request sent.")
-        output = sanitize(send_once(key))
+        output = sanitize(send_once(key, a.start_seconds, a.end_seconds), a.start_seconds, a.end_seconds)
         with tempfile.NamedTemporaryFile(dir=a.output.parent, mode="w", encoding="utf-8") as f:
             json.dump(output, f, ensure_ascii=False, indent=2)
             f.write("\n")
