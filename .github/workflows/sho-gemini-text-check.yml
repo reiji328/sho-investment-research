@@ -1,0 +1,83 @@
+name: Sho Gemini text check
+
+"on":
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/sho-gemini-text-check.yml
+
+permissions: {}
+
+jobs:
+  text-check:
+    # Run only on the approved push that adds this check, once.
+    if: github.repository == 'reiji328/sho-investment-research' && github.event.before == '27bd5ae96d67c3f81769f4e2d2c57f54b253bf07' && github.run_attempt == '1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Send one text-only request
+        shell: python
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          import http.client
+          import json
+          import os
+          import sys
+
+          key = os.environ.get("GEMINI_API_KEY", "").strip()
+          if not key:
+              sys.exit("Key unavailable. No request sent.")
+
+          payload = {
+              "model": "gemini-3.5-flash-lite",
+              "store": False,
+              "input": [{"type": "text", "text": "OKとだけ返して"}],
+          }
+          headers = {
+              "Content-Type": "application/json",
+              "Api-Revision": "2026-05-20",
+              "x-goog-api-key": key,
+          }
+          connection = http.client.HTTPSConnection("generativelanguage.googleapis.com", timeout=120)
+          try:
+              connection.request("POST", "/v1beta/interactions", json.dumps(payload).encode(), headers)
+              response = connection.getresponse()
+              print(f"Text probe HTTP {response.status}", flush=True)
+              body = response.read(65537)
+          except (OSError, http.client.HTTPException):
+              sys.exit("Transport error. No retry.")
+          finally:
+              connection.close()
+
+          if len(body) > 65536:
+              sys.exit("Response exceeded the size limit.")
+          try:
+              result = json.loads(body)
+          except ValueError:
+              sys.exit("Response was not JSON.")
+          if not isinstance(result, dict):
+              sys.exit("Unexpected response format.")
+          if not 200 <= response.status < 300:
+              error = result.get("error")
+              if isinstance(error, dict):
+                  known = {"UNAVAILABLE", "RESOURCE_EXHAUSTED", "PERMISSION_DENIED", "INVALID_ARGUMENT",
+                           "UNAUTHENTICATED", "NOT_FOUND", "service_unavailable", "rate_limit_exceeded",
+                           "quota_exceeded", "permission_denied", "authentication", "model_not_found"}
+                  for field in ("status", "code"):
+                      value = error.get(field)
+                      if isinstance(value, str) and value in known:
+                          print(f"Google error {value}")
+              sys.exit("Request failed. No retry.")
+
+          if result.get("status") != "completed":
+              sys.exit("No completed interaction.")
+          parts = []
+          for step in result.get("steps", []):
+              if isinstance(step, dict) and step.get("type") == "model_output":
+                  parts.extend(step.get("content", []))
+          reply = "".join(p["text"] for p in parts
+                          if isinstance(p, dict) and p.get("type") == "text" and isinstance(p.get("text"), str))
+          if reply.strip() != "OK":
+              sys.exit("Completed without the expected OK text.")
+          print("Verified model reply: OK")
