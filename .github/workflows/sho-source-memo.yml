@@ -1,0 +1,80 @@
+name: Sho Source Memo 01
+
+"on":
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - requests/sho-source-memo-01.txt
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: sho-source-memo-01
+  cancel-in-progress: false
+
+jobs:
+  memo:
+    if: github.repository == 'reiji328/sho-investment-research' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out the pilot
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check previous requests
+        id: history
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/sho_source_memo_history.py
+
+      - name: Check the Gemini key is configured
+        if: steps.history.outputs.send == 'true'
+        env:
+          HAS_KEY: ${{ secrets.GEMINI_API_KEY != '' }}
+        run: |
+          if [[ "${HAS_KEY,,}" != true ]]; then
+            echo 'Add GEMINI_API_KEY to this repository’s Actions secrets. No video request sent.'
+            exit 1
+          fi
+
+      - name: Load the latest successful public catalog
+        if: steps.history.outputs.send == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          endpoint="repos/$GITHUB_REPOSITORY/actions/workflows/collect.yml/runs?branch=master&status=success&per_page=30"
+          run_id=$(gh api "$endpoint" | jq -er --arg repo "$GITHUB_REPOSITORY" '
+            first(.workflow_runs[] | select(
+              .head_repository.full_name == $repo and
+              .path == ".github/workflows/collect.yml" and
+              (.event == "schedule" or .event == "workflow_dispatch")
+            ) | .id)')
+          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" \
+            --name "sho-youtube-catalog-$run_id" --dir "$RUNNER_TEMP/catalog"
+          python3 scripts/sho_source_memo.py --catalog "$RUNNER_TEMP/catalog/videos.json" --check-catalog
+          echo "Verified catalog from run $run_id."
+
+      # This step name identifies any possible submission in previous run attempts.
+      - name: Send the one Gemini request
+        if: steps.history.outputs.send == 'true'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python3 scripts/sho_source_memo.py \
+            --catalog "$RUNNER_TEMP/catalog/videos.json" \
+            --output "$RUNNER_TEMP/source_memo.json"
+
+      - name: Publish the source memo
+        if: steps.history.outputs.send == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sho-source-memo-01
+          path: ${{ runner.temp }}/source_memo.json
+          retention-days: 21
+          if-no-files-found: error
