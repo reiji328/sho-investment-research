@@ -1,0 +1,75 @@
+name: Sho clip 07-08 one-shot probe
+
+"on":
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/sho-clip-probe-0700.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: sho-clip-0700-one-shot
+  cancel-in-progress: false
+
+jobs:
+  clip-probe:
+    if: github.repository == 'reiji328/sho-investment-research' && github.event.before == '06cef824e4bcbf72188dd13a4b35cc994707103e' && github.run_attempt == '1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Test the one-minute request and sanitizer offline
+        run: python3 -m unittest discover -s tests -p test_sho_clip_probe.py -v
+
+      - name: Check the Gemini key is configured
+        env:
+          HAS_KEY: ${{ secrets.GEMINI_API_KEY != '' }}
+        run: |
+          if [[ "${HAS_KEY,,}" != true ]]; then
+            echo 'Missing key; no request sent.'
+            exit 1
+          fi
+
+      - name: Load the latest successful catalog and verify exact video
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          endpoint="repos/$GITHUB_REPOSITORY/actions/workflows/collect.yml/runs?branch=master&status=success&per_page=30"
+          run_id=$(gh api "$endpoint" | jq -er --arg repo "$GITHUB_REPOSITORY" '
+            first(.workflow_runs[] | select(
+              .head_repository.full_name == $repo and
+              .path == ".github/workflows/collect.yml" and
+              (.event == "schedule" or .event == "workflow_dispatch")
+            ) | .id)')
+          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" \
+            --name "sho-youtube-catalog-$run_id" --dir "$RUNNER_TEMP/catalog"
+          python3 - "$RUNNER_TEMP/catalog/videos.json" <<'PY'
+          import sys
+          from scripts.sho_clip_probe import validate_catalog
+          validate_catalog(sys.argv[1])
+          print("Approved normal video confirmed from catalog.")
+          PY
+
+      - name: Send exactly one clipped video request
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python3 scripts/sho_clip_probe.py \
+            --catalog "$RUNNER_TEMP/catalog/videos.json" \
+            --output "$RUNNER_TEMP/clip_memo.json"
+
+      - name: Publish only the sanitized clip label
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sho-clip-probe-0700
+          path: ${{ runner.temp }}/clip_memo.json
+          retention-days: 21
+          if-no-files-found: error
