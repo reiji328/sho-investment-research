@@ -50,7 +50,8 @@ def payload():
         "候補: " + " / ".join(LABELS) + "。"
         "判別できない場合は「判別できない」を選んでください。"
         "字幕の引用・銘柄名・数値条件・自由記述は出力禁止。"
-        'JSONオブジェクト {"topics":["話題名","話題名","話題名"]} のみを返すこと。'
+        "返答は3つの話題名を07時台・08時台・09時台の順に縦棒|で区切った1行のみ。"
+        "例: チャートの見方|信用取引|信用倍率。JSONや説明文は返さないこと。"
     )
     return {
         "contents": [{"role": "user", "parts": [
@@ -104,16 +105,22 @@ def sanitize(value):
         raise PilotError("Missing model text.")
     txt = "".join(p["text"] for p in content["parts"]
                   if isinstance(p, dict) and not p.get("thought") and isinstance(p.get("text"), str))
+    raw = txt.strip()
+    if raw.startswith("```") and raw.endswith("```"):
+        raw = "\n".join(raw.splitlines()[1:-1]).strip()
+    labels = None
     try:
-        parsed = json.loads(txt)
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict) and set(parsed) == {"topics"}:
+            labels = parsed["topics"]
     except (ValueError, RecursionError):
-        raise PilotError("Unparseable model JSON.") from None
-    if not isinstance(parsed, dict) or set(parsed) != {"topics"}:
-        raise PilotError("Unexpected output fields.")
-    labels = parsed["topics"]
+        pass
+    if labels is None:
+        pieces = raw.replace("、", "|").replace("，", "|").split("|")
+        labels = [part.strip() for part in pieces]
     if not isinstance(labels, list) or len(labels) != 3 or any(
             type(label) is not str or label not in LABELS for label in labels):
-        raise PilotError("Topics unapproved or wrong count.")
+        raise PilotError("Model did not return exactly three approved topic names.")
     count = usage["promptTokenCount"]
     print(f"3-minute prompt tokens: {count}", flush=True)
     if count > 30000:
