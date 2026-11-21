@@ -2,6 +2,7 @@
 
 import json
 import os
+from pathlib import Path
 import subprocess
 import sys
 
@@ -22,7 +23,7 @@ def rows(endpoint, field):
     return [row for page in json.loads(response.stdout) for row in page[field]]
 
 
-def previous_memo(repo, number):
+def previous_memo(repo, number, reviewed_retries=()):
     base = f"repos/{repo}/actions"
     runs = rows(f"{base}/workflows/{WORKFLOW}/runs?per_page=100", "workflow_runs")
     prior = [run for run in runs if run["run_number"] < number]
@@ -46,6 +47,11 @@ def previous_memo(repo, number):
                 return run_id
             if steps.get(SEND_STEP) == "skipped":
                 continue
+            # Each manual approval names the exact failed run and job reviewed by the operator.
+            approval = f"retry-reviewed-503 {run_id}/{job['id']}"
+            if (approval in reviewed_retries and steps.get(SEND_STEP) == "failure"
+                    and steps.get(UPLOAD_STEP) == "skipped"):
+                continue
             # GitHub may omit later steps when a preflight check fails.
             if SEND_STEP not in steps and any(steps.get(name) == "failure" for name in PREFLIGHT_STEPS):
                 continue
@@ -57,7 +63,9 @@ def main():
     if os.environ["GITHUB_RUN_ATTEMPT"] != "1":
         sys.exit("Re-runs never send this pilot. For a preflight failure, start a fresh request after fixing it.")
     try:
-        run_id = previous_memo(os.environ["GITHUB_REPOSITORY"], int(os.environ["GITHUB_RUN_NUMBER"]))
+        request_file = Path(__file__).resolve().parents[1] / "requests/sho-source-memo-01.txt"
+        approvals = set(request_file.read_text(encoding="utf-8").splitlines())
+        run_id = previous_memo(os.environ["GITHUB_REPOSITORY"], int(os.environ["GITHUB_RUN_NUMBER"]), approvals)
     except ValueError as error:
         sys.exit(str(error))
     except (KeyError, subprocess.CalledProcessError):

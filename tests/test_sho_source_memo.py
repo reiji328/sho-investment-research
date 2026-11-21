@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import patch
 
 from scripts import sho_source_memo as memo
+from scripts import sho_source_memo_history as history
 
 
 ROW = {
@@ -112,6 +113,32 @@ class SourceMemoTests(unittest.TestCase):
                     memo.run(catalog, output)
                 request.assert_called_once_with(memo.VIDEO_URL, "demo-key")
                 self.assertEqual(before, output.read_bytes())
+
+
+class ManualRetryTests(unittest.TestCase):
+    def test_approval_identifies_only_the_reviewed_failed_request(self):
+        def failed_job(job_id, send="failure", publish="skipped"):
+            return {"id": job_id, "steps": [
+                {"name": history.SEND_STEP, "conclusion": send},
+                {"name": history.UPLOAD_STEP, "conclusion": publish},
+            ]}
+
+        run = {"id": 40, "run_number": 1, "status": "completed"}
+        later = {"id": 41, "run_number": 2, "status": "completed"}
+        approvals = {"retry-reviewed-503 40/100"}
+        with patch.object(history, "rows", side_effect=[[run], [failed_job(100)]]):
+            self.assertIsNone(history.previous_memo("test/repo", 2, approvals))
+        for jobs, approved in [
+            ([failed_job(100)], set()),
+            ([failed_job(101)], approvals),
+            ([failed_job(100, send="cancelled")], approvals),
+            ([failed_job(100, send="success", publish="failure")], approvals),
+        ]:
+            with patch.object(history, "rows", side_effect=[[run], jobs]), self.assertRaises(ValueError):
+                history.previous_memo("test/repo", 2, approved)
+        with patch.object(history, "rows", side_effect=[[run, later], [failed_job(100)], [failed_job(101)]]):
+            with self.assertRaises(ValueError):
+                history.previous_memo("test/repo", 3, approvals)
 
 
 if __name__ == "__main__":
