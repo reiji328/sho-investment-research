@@ -1,0 +1,66 @@
+name: Sho processing upper-duration comparison (one shot)
+
+"on":
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/sho-duration-upper-20261122.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: sho-duration-upper-20261122
+  cancel-in-progress: false
+
+jobs:
+  compare:
+    if: github.repository == 'reiji328/sho-investment-research' && github.event.before == '419afa93e3233364458848ba038ca75d578741b7' && github.run_attempt == '1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Test upper-duration logic offline
+        run: python3 -m unittest discover -s tests -p 'test_sho_duration_probe_upper.py' -v
+      - name: Verify API key
+        env:
+          HAS_KEY: ${{ secrets.GEMINI_API_KEY != '' }}
+        run: |
+          if [[ "$HAS_KEY" != "true" ]]; then
+            echo 'API key unavailable; no video sent.'
+            exit 1
+          fi
+      - name: Load latest valid catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          endpoint="repos/$GITHUB_REPOSITORY/actions/workflows/collect.yml/runs?branch=master&status=success&per_page=30"
+          run_id=$(gh api "$endpoint" | jq -er --arg repo "$GITHUB_REPOSITORY" '
+            first(.workflow_runs[] | select(
+              .head_repository.full_name == $repo and
+              .path == ".github/workflows/collect.yml" and
+              (.event == "schedule" or .event == "workflow_dispatch")
+            ) | .id)')
+          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" \
+            --name "sho-youtube-catalog-$run_id" --dir "$RUNNER_TEMP/catalog"
+          python3 -c 'import sys; from scripts.sho_duration_probe_upper import check_catalog; check_catalog(sys.argv[1]); print("Approved video metadata verified.")' "$RUNNER_TEMP/catalog/videos.json"
+      - name: Probe 20 minutes then 26m04s (max 2 calls; stop on failure)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python3 scripts/sho_duration_probe_upper.py \
+            --catalog "$RUNNER_TEMP/catalog/videos.json" \
+            --output "$RUNNER_TEMP/duration_upper.json"
+      - name: Save safe duration telemetry
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: sho-duration-upper-20261122
+          path: ${{ runner.temp }}/duration_upper.json
+          retention-days: 21
+          if-no-files-found: warn
