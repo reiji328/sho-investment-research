@@ -1,0 +1,66 @@
+name: Sho Agentic video 26m pilot one-shot
+
+"on":
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/sho-agentic-video-pilot.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: sho-agentic-video-pilot
+  cancel-in-progress: false
+
+jobs:
+  pilot:
+    if: github.repository == 'reiji328/sho-investment-research' && github.event.before == '436a1382f4f8ce685d120a8dc65df8ac52d3d7a8' && github.run_attempt == '1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Test privacy and request shape offline
+        run: python3 -m unittest discover -s tests -p 'test_sho_agentic_video_probe.py' -v
+      - name: Check Secret before any send
+        env:
+          HAS_KEY: ${{ secrets.GEMINI_API_KEY != '' }}
+        run: |
+          if [[ "$HAS_KEY" != "true" ]]; then
+            echo 'No Gemini Secret; no request sent.'
+            exit 1
+          fi
+      - name: Read and validate official video catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          endpoint="repos/$GITHUB_REPOSITORY/actions/workflows/collect.yml/runs?branch=master&status=success&per_page=30"
+          run_id=$(gh api "$endpoint" | jq -er --arg repo "$GITHUB_REPOSITORY" '
+            first(.workflow_runs[] | select(
+              .head_repository.full_name == $repo and
+              .path == ".github/workflows/collect.yml" and
+              (.event == "schedule" or .event == "workflow_dispatch")
+            ) | .id)')
+          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" \
+            --name "sho-youtube-catalog-$run_id" --dir "$RUNNER_TEMP/catalog"
+          python3 -c 'import sys; from scripts.sho_agentic_video_probe import verify_catalog; verify_catalog(sys.argv[1]); print("Video metadata verified.")' "$RUNNER_TEMP/catalog/videos.json"
+      - name: Run agentic 26m input check once
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python3 scripts/sho_agentic_video_probe.py \
+            --catalog "$RUNNER_TEMP/catalog/videos.json" \
+            --output "$RUNNER_TEMP/agentic_pilot.json"
+      - name: Publish safe telemetry regardless of API result
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: sho-agentic-video-20261122
+          path: ${{ runner.temp }}/agentic_pilot.json
+          retention-days: 21
+          if-no-files-found: warn
