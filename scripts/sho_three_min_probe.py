@@ -60,7 +60,6 @@ def payload():
         ]}],
         "generationConfig": {
             "mediaResolution": "MEDIA_RESOLUTION_LOW",
-            "responseMimeType": "application/json",
             "maxOutputTokens": 768,
         },
     }
