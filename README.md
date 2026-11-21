@@ -81,3 +81,18 @@ YOUTUBE_API_KEY='YOUR_PRIVATE_KEY' python scripts/collect.py
 起動は手動、または `master` の `requests/sho-source-memo-01.txt` の更新が対象です。台帳の日次更新とは独立しています。送信前に止まったときは原因を直して再開できます。送信段階に入った後で結果の保存を確認できないときは、実行履歴を確認して重複送信を防ぎます。保存済みのメモはその実行の成果物から取得できます。公開した項目と保存範囲は[データ方針](docs/DATA_POLICY.md)に従います。
 
 HTTP 503をログで確認し、成果物がなく再試行を決めた場合は、依頼ファイルに `retry-reviewed-503 RUN_ID/JOB_ID` を1行追記します。過去に確認した実行とジョブを指定するため、次の送信まで失敗した場合には自動で再送されません。
+
+
+## Sho動画の区間解析パイロット（2026-11-22）
+
+対象は一般公開の通常動画[「日本株爆益戦略①」](https://www.youtube.com/watch?v=oYvsDRcrXdw)（26:04）。公開するのは動画URL・動画内の区間・短い話題名だけ。元の日本語音声・チャートと照合する研究カードは非公開の`My-Knowledge`で管理します。APIキー、生のGemini自由記述、売買条件、分析者の評価は公開しません。
+
+- [07:00〜08:00の初回成功](https://github.com/reiji328/sho-investment-research/actions/runs/44954506022)：`generateContent`、低解像度、入力5,563トークン、HTTP 200、モデルの粗い話題分類「株価チャート」。
+- [全26:04の一括試験](https://github.com/reiji328/sho-investment-research/actions/runs/44955638995)：JSON MIME設定つきでHTTP 503。自動再送なし。
+- [07:00〜10:00の3分試験（JSON MIME設定）](https://github.com/reiji328/sho-investment-research/actions/runs/44955838976)：HTTP 503。自動再送なし。
+- [同じ3分の通常テキスト応答](https://github.com/reiji328/sho-investment-research/actions/runs/44955974419)：HTTP 200だが、モデル出力がプログラムの想定したJSONに一致せず、成果物の保存前に停止。
+- [3分の通常テキスト・安全な話題3個への限定解析](https://github.com/reiji328/sho-investment-research/actions/runs/44956118040)：**HTTP 200、入力16,620トークン、話題メモ保存成功**。成果物`sho-three-min-text-labels-0700`（artifact ID `14726893920`、21日保持）。07:00「チャートの見方」、08:00「信用取引」、09:00「信用倍率」。いずれも**未照合のGemini分類**であり、話者本人の確認済み発言ではありません。
+
+通信が503となった理由は、動画長・JSON形式・Googleサービス状態などのどれかに特定できていません。現時点で**3分区間を通常テキスト応答で送る方式が1回実動作した**という範囲で採用候補とします。入力トークンは区間長と整合的ですが、音声区間が完全に限定されたと証明するものではありません。各実験は単発・自動再送なしであり、残りの26分や他の動画の自動解析は開始していません。
+
+技術経緯はGitのコミット履歴と各Actions実行ログを参照し、旧試験コード・失敗記録を削除しないでください。研究・確認は非公開側の同名動画カードで継続します。
