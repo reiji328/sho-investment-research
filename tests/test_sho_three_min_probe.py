@@ -28,6 +28,11 @@ class Tests(unittest.TestCase):
         self.assertEqual([i["time"] for i in result["segments"]], ["07:00", "08:00", "09:00"])
         self.assertEqual(result["segments"][2]["topic"], "信用倍率")
         self.assertEqual(set(result), {"url", "segments", "validation", "reported_prompt_tokens"})
+        plain = {"usageMetadata": {"promptTokenCount": 17234},
+                 "candidates": [{"finishReason": "STOP", "content": {"parts": [
+                     {"text": "チャートの見方|信用取引|信用倍率"}
+                 ]}}]}
+        self.assertEqual(s.sanitize(plain)["segments"][0]["topic"], "チャートの見方")
         for labels in [["private"], ["注意点"] * 2, ["注意点"] * 4, [1, 2, 3]]:
             with self.subTest(labels=labels), self.assertRaises(s.PilotError):
                 s.sanitize(GOOD | {"candidates": [
