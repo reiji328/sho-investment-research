@@ -202,7 +202,7 @@ def main():
         manifest = {
             "schema": SCHEMA,
             "video_id": VIDEO_ID,
-            "clip": "07:00-10:00",
+            "clip": f"{CLIP_START//60:02d}:00-{CLIP_END//60:02d}:00",
             "gemini_http_status": 200,
             "input_tokens": tokens,
             "encrypted_file": "sealed_research.cms",
