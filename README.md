@@ -127,3 +127,13 @@ HTTP 503をログで確認し、成果物がなく再試行を決めた場合は
 - ChatGPT側でArtifactを取得し暗号文のSHA-256と認証付き復号を確認した後、**既存GitHub連携を使って非公開`My-Knowledge`の既存研究カードに回答を保存し、再読込を確認した**。[非公開保存コミット](https://github.com/reiji328/My-Knowledge/commit/4605a761f2abe008a29ac714f9e71091d9073f97)。ここで実現した転送は**ChatGPTを介するリレー**であり、公開GitHubから非公開GitHubへの直接自動pushではない。
 - モデルの日本語回答は**原音・チャートの独立照合前**。数字・日付の誤認の疑いがあるため、本人の確定した投資手法とみなさない。動画ファイルや音声ファイルは取得していない。
 - **1回限りの試行**。次回以降は別途新しい暗号化証明書と実行条件が必要。自動再送・全件送信・課金設定変更はない。既存の公開/非公開分離方針自体を正式改訂したものではない。
+
+
+## 2026-11-22｜10〜16分の暗号化リレー（非公開研究カードへ保存済み）
+
+「爆益戦略①」1本の研究を優先し、従来の公開Actions→暗号化Artifact→ChatGPT連携→非公開`My-Knowledge`の役割分担を維持した。公開GitHubにはGeminiの平文を残さず、非公開リポジトリへの書込トークンも付与しない。
+
+- **10:00〜13:00**：[公開Actions run 44967889844](https://github.com/reiji328/sho-investment-research/actions/runs/44967889844) にてGemini API HTTP200、低解像度、入力16,646トークン。暗号化Artifact `sho-encrypted-handoff-1000`（ID 14732292047、保存3日）を受け取り、ChatGPT側で認証付き復号・区間600〜780秒を確認して[非公開研究カードへ保存](https://github.com/reiji328/My-Knowledge/commit/47676b1e70089c44e7e16dab00e2e78e853ce3cc)。生成コードに残っていた前回の区間名`07:00-10:00`は**公開manifestだけの表示誤り**で、暗号文の内部データと実際の送信区間は正しく10:00〜13:00。コードは[修正済み](https://github.com/reiji328/sho-investment-research/commit/203846bd20b26669c2ea718e72262fd7a5647e84)。
+- **13:00〜16:00**：最初の[公開Actions run 44968141583](https://github.com/reiji328/sho-investment-research/actions/runs/44968141583) は公開証明書の転記ミスにより暗号化の**事前テスト失敗でGemini送信0回**。証明書の欠落1文字を[修正](https://github.com/reiji328/sho-investment-research/commit/7020832f8bf87ca786a2719905bba1b80b7ebe89)して[単発再実行 run 44968281133](https://github.com/reiji328/sho-investment-research/actions/runs/44968281133)。Gemini API HTTP200、入力16,646トークン、暗号化Artifact `sho-encrypted-handoff-1300`（ID 14731639823、保存3日）を受信・復号、内部780〜960秒を確認し[非公開研究カードへ保存](https://github.com/reiji328/My-Knowledge/commit/500f51369d84c029356369681e04d4578e306180)。
+- **出典の位置づけ**：モデル要約はAI暫定で、本人の原音・チャート・日付の直接照合は未実施。公開側には公開可能な技術情報と暗号文だけ、研究の内容と根拠は非公開カードへ。貸株注意喚起と申込制限・停止は日本証券金融・JPXの公式定義で異なるため、AIの説明を実際の制度や売買ルールと混同しない。
+- **継続条件**：新規解析のたびに短期の別公開証明書と公開Actionsの一度限りの起動条件を用意する。先に証明書の形式・暗号化テストが通った場合のみGeminiに送信。自動再試行、全動画一括実行、課金設定変更なし。現在公開側から非公開GitHubへ直接自動pushする仕組みではない。
