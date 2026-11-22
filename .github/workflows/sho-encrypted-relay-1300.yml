@@ -1,0 +1,74 @@
+name: Sho encrypted research handoff 13-16 one-shot
+
+"on":
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/sho-encrypted-relay-1300.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: sho-encrypted-relay-1300
+  cancel-in-progress: false
+
+jobs:
+  one:
+    # Allow the one user-authorized public Gemini request only.
+    if: github.repository == 'reiji328/sho-investment-research' && github.event.before == '203846bd20b26669c2ea718e72262fd7a5647e84' && github.run_attempt == '1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Check out the public analysis code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Verify encrypted relay offline
+        run: |
+          python3 -m unittest discover -s tests -p test_sho_encrypted_relay_1300.py -v
+          openssl x509 -in certs/sho-relay-20261122-1300.crt -noout -checkend 0
+
+      - name: Check Gemini key before calling any API
+        env:
+          HAS_KEY: ${{ secrets.GEMINI_API_KEY != '' }}
+        run: |
+          if [[ "$HAS_KEY" != "true" ]]; then
+            echo 'Gemini API key not present. No request sent.'
+            exit 1
+          fi
+
+      - name: Download and verify approved video catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          endpoint="repos/$GITHUB_REPOSITORY/actions/workflows/collect.yml/runs?branch=master&status=success&per_page=30"
+          run_id=$(gh api "$endpoint" | jq -er --arg repo "$GITHUB_REPOSITORY" '
+            first(.workflow_runs[] | select(
+              .head_repository.full_name == $repo and
+              .path == ".github/workflows/collect.yml" and
+              (.event == "schedule" or .event == "workflow_dispatch")
+            ) | .id)')
+          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" \
+            --name "sho-youtube-catalog-$run_id" --dir "$RUNNER_TEMP/catalog"
+          python3 -c 'import sys; from scripts.sho_encrypted_relay_1300 import check_catalog; check_catalog(sys.argv[1]); print("Approved video metadata confirmed.")' "$RUNNER_TEMP/catalog/videos.json"
+
+      - name: Send one Gemini request and seal result in memory
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/sealed"
+          python3 scripts/sho_encrypted_relay_1300.py \
+            --catalog "$RUNNER_TEMP/catalog/videos.json" \
+            --output-dir "$RUNNER_TEMP/sealed"
+
+      - name: Upload ONLY encrypted content plus safe manifest
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: sho-encrypted-handoff-1300
+          path: ${{ runner.temp }}/sealed/
+          retention-days: 3
+          if-no-files-found: error
