@@ -1,0 +1,30 @@
+name: Sho v0.3 source-only prompt quality and encryption OFFLINE tests
+
+"on":
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/sho-longclip-v03-offline-once.yml
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    if: github.repository == 'reiji328/sho-investment-research' && github.event.before == 'c6f3f86b0f009a8e83618cef0d3e53531de0aaed' && github.run_attempt == '1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Check out public code only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Compile v0.2/v0.3 and offline test source only
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/sho_longclip_relay_v03.py tests/test_sho_longclip_relay_v03.py
+          python3 -m unittest discover -s tests -p test_sho_longclip_relay_v03.py -v
+          python3 -m unittest discover -s tests -p test_sho_longclip_relay.py -v
+      - name: Confirm no Gemini API call
+        run: |
+          echo 'Only synthetic offline tests. No Gemini secret, URL request, or charge.'
