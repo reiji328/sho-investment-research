@@ -1,0 +1,48 @@
+name: Sho Gemini 3.8 Flash minimal TEXT-ONLY one-shot diagnostic
+
+"on":
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/sho-model38-text-only-once.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sho-model38-text-only-once-20261123
+  cancel-in-progress: false
+
+jobs:
+  minimal_text:
+    if: github.repository == 'reiji328/sho-investment-research' && github.event.before == '8bf1fd0c7323750266ada7d5fef302c28b84a1ea' && github.run_attempt == '1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Checkout public code without persisting credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Check syntax and ALL fake-response offline safety tests
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/sho_model38_text_smoke.py tests/test_sho_model38_text_smoke.py
+          python3 -m unittest discover -s tests -p test_sho_model38_text_smoke.py -v
+          python3 scripts/sho_model38_text_smoke.py
+
+      - name: Verify API key is configured without displaying it
+        env:
+          HAS_KEY: ${{ secrets.GEMINI_API_KEY != '' }}
+        run: |
+          if [[ "$HAS_KEY" != "true" ]]; then
+            echo 'No key; no real request sent.'
+            exit 1
+          fi
+
+      - name: ONE short text request with only status and usage output
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          set -euo pipefail
+          python3 scripts/sho_model38_text_smoke.py --execute
