@@ -1,0 +1,73 @@
+name: Sho Gemini 3.8 Flash 5-minute ONE short-clip test
+
+"on":
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/sho-model38-v03-5m-once.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: sho-model38-v03-5m-short-once-20261123
+  cancel-in-progress: false
+
+jobs:
+  model_only_10m:
+    if: github.repository == 'reiji328/sho-investment-research' && github.event.before == '2cd25fb684c695ead1b5166b5953898b15e83557' && github.run_attempt == '1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout public code without persisted credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Verify model-only diff, offline tests and public certificate BEFORE request
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/sho_longclip_relay_38_modeltest.py tests/test_sho_longclip_relay_38_modeltest.py
+          python3 -m unittest discover -s tests -p test_sho_longclip_relay_38_modeltest.py -v
+          openssl x509 -in certs/sho-model38-v03-5m-20261123-single.crt -noout -checkend 0
+          echo '2b953568ab9a26c81870fa67edf439215286f81b3ab47f38a5387686b10c4d75  certs/sho-model38-v03-5m-20261123-single.crt' | sha256sum -c -
+
+      - name: Check existing Gemini API key without logging it
+        env:
+          HAS_KEY: ${{ secrets.GEMINI_API_KEY != '' }}
+        run: |
+          if [[ "$HAS_KEY" != "true" ]]; then
+            echo 'Gemini key not present, no request sent.'
+            exit 1
+          fi
+
+      - name: Retrieve previously verified video catalog and check exact metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download 44967026981 --repo "$GITHUB_REPOSITORY" \
+            --name sho-youtube-catalog-44967026981 --dir "$RUNNER_TEMP/catalog"
+          python3 -c 'import sys; from scripts.sho_longclip_relay_38_modeltest import check_catalog; check_catalog(sys.argv[1]); print("Video catalog verified.")' "$RUNNER_TEMP/catalog/videos.json"
+
+      - name: ONE Gemini 3.8 Flash request for 20m to 25m and seal in memory
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/sealed"
+          python3 scripts/sho_longclip_relay_38_modeltest.py \
+            --clip 5m \
+            --catalog "$RUNNER_TEMP/catalog/videos.json" \
+            --certificate certs/sho-model38-v03-5m-20261123-single.crt \
+            --output-dir "$RUNNER_TEMP/sealed" \
+            --execute
+
+      - name: Upload ONLY encrypted Gemini content and manifest
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: sho-encrypted-model38-v03-5m-single-20261123
+          path: ${{ runner.temp }}/sealed/
+          retention-days: 3
+          if-no-files-found: error
