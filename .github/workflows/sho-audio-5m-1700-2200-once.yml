@@ -1,0 +1,73 @@
+name: Sho 5-minute full-audio AI transcription - ONE SHOT
+
+"on":
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/sho-audio-5m-1700-2200-once.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: sho-five-minute-full-audio-once-20261124
+  cancel-in-progress: false
+
+jobs:
+  audio5m_once:
+    if: github.repository == 'reiji328/sho-investment-research' && github.event.before == '37e4b2acc69f47b140205c7573ea990ba3cb8a16' && github.run_attempt == '1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - name: Checkout public pilot code without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Run 9 synthetic safeguards and exact one-use certificate check
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/sho_audio_transcribe_5m_1700_2200_v01.py
+          python3 -m unittest discover -s tests -p test_sho_audio_transcribe_5m_1700_2200_v01.py -v
+          openssl x509 -in certs/sho-audio-full5m-20261124.crt -noout -checkend 0
+          echo 'e450883c28aa3d4a45eaadbff1b75a1631bcaf96eb3002fc190e3c692337d238  certs/sho-audio-full5m-20261124.crt' | sha256sum -c -
+
+      - name: Verify Free-tier account secret is set without logging it
+        env:
+          HAS_GEMINI_KEY: ${{ secrets.GEMINI_API_KEY != '' }}
+        run: |
+          if [[ "$HAS_GEMINI_KEY" != "true" ]]; then
+            echo 'Key unavailable. NO Gemini request was sent.'
+            exit 1
+          fi
+
+      - name: Download previously verified exact public video catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download 44967026981 --repo "$GITHUB_REPOSITORY" \
+            --name sho-youtube-catalog-44967026981 --dir "$RUNNER_TEMP/catalog"
+          python3 -c 'import sys; from scripts.sho_audio_transcribe_5m_1700_2200_v01 import check_catalog; check_catalog(sys.argv[1]); print("Video catalog matched.")' "$RUNNER_TEMP/catalog/videos.json"
+
+      - name: ONE Gemini 3.5 Flash-Lite 17-22min audio transcription; seal before writing
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/sealed"
+          python3 scripts/sho_audio_transcribe_5m_1700_2200_v01.py \
+            --clip audio5m \
+            --catalog "$RUNNER_TEMP/catalog/videos.json" \
+            --certificate certs/sho-audio-full5m-20261124.crt \
+            --output-dir "$RUNNER_TEMP/sealed" \
+            --execute
+
+      - name: Upload ONLY sealed original-video analysis and safe manifest
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: sho-encrypted-audio5m-1700-2200-20261124
+          path: ${{ runner.temp }}/sealed/
+          retention-days: 3
+          if-no-files-found: error
