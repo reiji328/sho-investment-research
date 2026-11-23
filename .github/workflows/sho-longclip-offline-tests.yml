@@ -1,0 +1,31 @@
+name: Sho long-clip OFFLINE regression tests - no Gemini request
+
+"on":
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/sho-longclip-offline-tests.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    if: github.repository == 'reiji328/sho-investment-research' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.event.before == 'd8fc0f0db5fc795d9a2b75bee64fbe758187c95b' && github.run_attempt == '1'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Check out public code only, without cached token
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Check Python syntax
+        run: |
+          python3 -m py_compile scripts/sho_longclip_relay.py tests/test_sho_longclip_relay.py
+      - name: Run offline tests with synthetic Gemini responses and temporary local certificate
+        run: |
+          python3 -m unittest discover -s tests -p test_sho_longclip_relay.py -v
+      - name: Explicitly confirm no Gemini key is passed to this workflow
+        run: |
+          echo 'Offline test only. No GEMINI_API_KEY passed, no network request to Gemini.'
