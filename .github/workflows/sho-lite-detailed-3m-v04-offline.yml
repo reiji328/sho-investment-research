@@ -1,0 +1,32 @@
+name: Sho 3m detailed Flash-Lite v0.4 OFFLINE QA only
+
+"on":
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/sho-lite-detailed-3m-v04-offline.yml
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    if: github.repository == 'reiji328/sho-investment-research' && github.event.before == '3d597942beba472fc0b13c387950f30ee8e85897' && github.run_attempt == '1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Checkout public code without persisted credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Compile and run new detailed v0.4 synthetic 3m tests
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/sho_lite_detailed_3m_v04.py tests/test_sho_lite_detailed_3m_v04.py
+          python3 -m unittest discover -s tests -p test_sho_lite_detailed_3m_v04.py -v
+      - name: Check original v0.3 test suite remains healthy
+        run: |
+          python3 -m unittest discover -s tests -p test_sho_longclip_relay_v03.py -v
+      - name: Declare no Gemini request and no API key
+        run: |
+          echo 'Offline quality and crypto tests only: no Gemini key is passed, no real API request sent.'
