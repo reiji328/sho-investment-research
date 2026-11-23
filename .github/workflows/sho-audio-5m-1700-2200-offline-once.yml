@@ -1,0 +1,30 @@
+name: Sho 5-min audio transcription OFFLINE QA only
+
+"on":
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/sho-audio-5m-1700-2200-offline-once.yml
+
+permissions:
+  contents: read
+
+jobs:
+  dry_run:
+    if: github.repository == 'reiji328/sho-investment-research' && github.event.before == '76ea656d065f5848d612aa5f357cf54075eca14b' && github.run_attempt == '1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Checkout public code without stored credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Verify exact 5-min scope, fake HTTP, CMS privacy and certificate
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/sho_audio_transcribe_5m_1700_2200_v01.py tests/test_sho_audio_transcribe_5m_1700_2200_v01.py
+          python3 -m unittest discover -s tests -p test_sho_audio_transcribe_5m_1700_2200_v01.py -v
+          openssl x509 -in certs/sho-audio-full5m-20261124.crt -noout -checkend 0
+          echo 'e450883c28aa3d4a45eaadbff1b75a1631bcaf96eb3002fc190e3c692337d238  certs/sho-audio-full5m-20261124.crt' | sha256sum -c -
+      - name: Confirm offline only
+        run: echo 'No Gemini secrets or actual API requests in this workflow.'
