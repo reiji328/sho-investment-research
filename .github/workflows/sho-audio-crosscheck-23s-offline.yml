@@ -1,0 +1,23 @@
+name: Sho 23-second raw-audio transcript OFFLINE QA only
+"on":
+  push:
+    branches: [master]
+    paths: [.github/workflows/sho-audio-crosscheck-23s-offline.yml]
+permissions:
+  contents: read
+jobs:
+  offline:
+    if: github.repository == 'reiji328/sho-investment-research' && github.event.before == 'fbd6f92901413cf2f8c5d7fa1bdad58509731861' && github.run_attempt == '1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Compile and test synthetic transcript and CMS cryptography
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/sho_original_audio_crosscheck_23s_v01.py
+          python3 -m unittest discover -s tests -p test_sho_original_audio_crosscheck_23s_v01.py -v
+      - name: No Gemini network call
+        run: echo 'Offline-only. No Gemini API key or actual model request.'
