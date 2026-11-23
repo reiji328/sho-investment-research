@@ -1,0 +1,30 @@
+name: Sho 2026-11-24 TWO audio clip synthetic OFFLINE QA
+
+"on":
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/sho-two-audio-clips-offline-20261124.yml
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    if: github.repository == 'reiji328/sho-investment-research' && github.event.before == 'a40955de514114f329ac011946a1f089b6ff0e0a' && github.run_attempt == '1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Check out without persisted credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Offline synthetic tests for both audio clips and crypto
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/sho_audio_crosscheck_two_clips_20261124.py tests/test_sho_audio_crosscheck_two_clips_20261124.py
+          python3 -m unittest discover -s tests -p test_sho_audio_crosscheck_two_clips_20261124.py -v
+          openssl x509 -in certs/sho-audio-evidence-two-clips-20261124.crt -noout -checkend 0
+          echo '465f56dacb971d192436ba728d26364f304fb90080337a0f408d4e6f2f9de438  certs/sho-audio-evidence-two-clips-20261124.crt' | sha256sum -c -
+      - name: Confirm no GEMINI_API_KEY or live request used
+        run: echo 'OFFLINE ONLY - no key or real Gemini requests.'
