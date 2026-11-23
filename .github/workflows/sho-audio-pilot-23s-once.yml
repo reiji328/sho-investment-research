@@ -1,0 +1,73 @@
+name: Sho original-audio 23s AI-crosscheck ONE SHOT
+
+"on":
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/sho-audio-pilot-23s-once.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: sho-original-audio-23s-ai-crosscheck-once-20261123
+  cancel-in-progress: false
+
+jobs:
+  seal_5min:
+    if: github.repository == 'reiji328/sho-investment-research' && github.event.before == '5c3cf3e48f2c5a4cd549764576f1d0612e221081' && github.run_attempt == '1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Check out public analysis code without persisted credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Run verified offline tests and check one-shot public encryption certificate
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tests -p test_sho_original_audio_crosscheck_23s_v01.py -v
+          python3 -m py_compile scripts/sho_original_audio_crosscheck_23s_v01.py
+          openssl x509 -in certs/sho-raw-audio-pilot-23s-20261123.crt -noout -checkend 0
+          echo 'ec55861c588df31b35e3ea9388180d2b0058b5aba289621a91b1dbf952970861  certs/sho-raw-audio-pilot-23s-20261123.crt' | sha256sum -c -
+
+      - name: Ensure existing API secret is present without printing its value
+        env:
+          HAS_GEMINI_KEY: ${{ secrets.GEMINI_API_KEY != '' }}
+        run: |
+          if [[ "$HAS_GEMINI_KEY" != "true" ]]; then
+            echo 'Gemini secret unavailable; NO request sent.'
+            exit 1
+          fi
+
+      - name: Download approved public video catalog and validate metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download 44967026981 --repo "$GITHUB_REPOSITORY" \
+            --name sho-youtube-catalog-44967026981 --dir "$RUNNER_TEMP/catalog"
+          python3 -c 'import sys; from scripts.sho_longclip_relay import check_catalog; check_catalog(sys.argv[1]); print("Exact catalog metadata verified.")' "$RUNNER_TEMP/catalog/videos.json"
+
+      - name: Send one 23sec audio transcription and encrypt output in memory
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/private-sealed"
+          python3 scripts/sho_original_audio_crosscheck_23s_v01.py \
+            --clip audio23s \
+            --catalog "$RUNNER_TEMP/catalog/videos.json" \
+            --certificate certs/sho-raw-audio-pilot-23s-20261123.crt \
+            --output-dir "$RUNNER_TEMP/private-sealed" \
+            --execute
+
+      - name: Upload ONLY encrypted output plus safe metadata
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: sho-encrypted-original-audio-pilot-23s-20261123
+          path: ${{ runner.temp }}/private-sealed/
+          retention-days: 3
+          if-no-files-found: error
