@@ -23,7 +23,8 @@ VIDEO_URL = f"https://www.youtube.com/watch?v={VIDEO_ID}"
 CHANNEL_ID = "UCK9Pl6bbWqMC_x7IDca2tIg"
 DURATION_SECONDS = 1564
 MODEL = "gemini-3.5-flash-lite"
-SCHEMA = "sho-relay-v0.3-quality"\nPROMPT_VERSION = "v0.3-unprimed-timeline"
+SCHEMA = "sho-relay-v0.3-quality"
+PROMPT_VERSION = "v0.3-unprimed-timeline"
 MAX_RESPONSE_BYTES = 1_000_000
 MAX_MODEL_CHARS = 100_000
 CLIPS = {
@@ -208,6 +209,7 @@ def make_packet(parsed, name):
     start, end, _, _ = get_clip(name)
     return {
         "schema": SCHEMA,
+        "prompt_version": PROMPT_VERSION,
         "created_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "video_id": VIDEO_ID,
         "video_url": VIDEO_URL,
@@ -252,6 +254,7 @@ def make_manifest(parsed, name, ciphertext):
     start, end, _, _ = get_clip(name)
     return {
         "schema": SCHEMA,
+        "prompt_version": PROMPT_VERSION,
         "video_id": VIDEO_ID,
         "clip": f"{start//60:02d}:{start%60:02d}-{end//60:02d}:{end%60:02d}",
         "model": MODEL,
